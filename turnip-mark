@@ -1,0 +1,239 @@
+#!/bin/dash
+
+assignment="$1"
+
+drop_last_line() {
+    tmp=$(mktemp)
+    sed '$d' "$1" > "$tmp"
+    mv "$tmp" "$1"
+}
+
+if ! test -d .turnip
+then
+    echo "turnip-mark: turnip directory .turnip not found" >&2
+    exit 1
+fi
+
+if test "$#" -ne 1
+then
+    echo "usage: turnip-mark <assignment>" >&2
+    exit 1
+fi
+
+if ! echo "$assignment" | grep -Eq '^[a-z][a-zA-Z0-9_]*$'
+then
+    echo "turnip-mark: invalid assignment: $assignment" >&2
+    exit 1
+fi
+
+if ! test -d ".turnip/$assignment"
+then
+    echo "turnip-mark: assignment $assignment not found" >&2
+    exit 1
+fi
+
+dir=".turnip/$assignment/submission"
+
+for zid in "$dir"/*
+do
+    zidnum=$(basename "$zid")
+
+    sub=$(ls "$zid" | sort -n | tail -n 1)
+
+    name=$(cat "$zid/$sub/name")
+    size=$(cat "$zid/$sub/size")
+    date=$(cat "$zid/$sub/date")
+    filepath="$zid/$sub/file"
+
+    echo "*** Student $zidnum - submission $sub: $name $size bytes @ $date"
+
+    passcount=0
+    failcount=0
+    summark=0
+    totalmark=0
+
+    for test in ".turnip/$assignment/test"/*
+    do
+        if ! test -f "$test/marks"
+        then
+            continue
+        fi
+
+        mark=$(cat "$test/marks")
+        totalmark=$((totalmark+mark))
+
+        testname=$(basename "$test")
+
+        test -f "$test/arguments" && args=$(cat "$test/arguments") || args=""
+        test -f "$test/stdin" && stdin="$test/stdin" || stdin="/dev/null"
+        test -f "$test/options" && options=$(cat "$test/options") || options=""
+        test -f "$test/exit_status" && expect_status=$(cat "$test/exit_status") || expect_status=0
+
+        my_out=$(mktemp)
+        my_err=$(mktemp)
+        your_out=$(mktemp)
+        your_err=$(mktemp)
+
+        "$filepath" $args < "$stdin" > "$my_out" 2> "$my_err"
+        my_status=$?
+
+        if test -f "$test/stdout"; then cp "$test/stdout" "$your_out"; else : > "$your_out"; fi
+        if test -f "$test/stderr"; then cp "$test/stderr" "$your_err"; else : > "$your_err"; fi
+
+        # sizes
+        my_out_size=$(wc -c < "$my_out" | tr -d ' ')
+        your_out_size=$(wc -c < "$your_out" | tr -d ' ')
+        my_err_size=$(wc -c < "$my_err" | tr -d ' ')
+        your_err_size=$(wc -c < "$your_err" | tr -d ' ')
+
+        # options
+        my_tmp=$(mktemp)
+        your_tmp=$(mktemp)
+
+        cp "$my_out" "$my_tmp"
+        cp "$your_out" "$your_tmp"
+
+        echo "$options" | grep -q c && {
+            tr '[:upper:]' '[:lower:]' < "$my_tmp" > "$my_tmp.1" && mv "$my_tmp.1" "$my_tmp"
+            tr '[:upper:]' '[:lower:]' < "$your_tmp" > "$your_tmp.1" && mv "$your_tmp.1" "$your_tmp"
+        }
+
+        echo "$options" | grep -q b && {
+            sed '/^$/d' "$my_tmp" > "$my_tmp.1" && mv "$my_tmp.1" "$my_tmp"
+            sed '/^$/d' "$your_tmp" > "$your_tmp.1" && mv "$your_tmp.1" "$your_tmp"
+        }
+
+        echo "$options" | grep -q w && {
+            tr -d ' \t' < "$my_tmp" > "$my_tmp.1" && mv "$my_tmp.1" "$my_tmp"
+            tr -d ' \t' < "$your_tmp" > "$your_tmp.1" && mv "$your_tmp.1" "$your_tmp"
+        }
+
+        echo "$options" | grep -q d && {
+            tr -cd '0-9\n' < "$my_tmp" > "$my_tmp.1" && mv "$my_tmp.1" "$my_tmp"
+            tr -cd '0-9\n' < "$your_tmp" > "$your_tmp.1" && mv "$your_tmp.1" "$your_tmp"
+        }
+
+        # compare
+        stdout_pass=0
+        stderr_pass=0
+        status_pass=0
+
+        cmp -s "$my_tmp" "$your_tmp" && stdout_pass=1
+        cmp -s "$my_err" "$your_err" && stderr_pass=1
+        test "$my_status" -eq "$expect_status" && status_pass=1
+
+        # pass
+        if test "$stdout_pass" -eq 1 && test "$stderr_pass" -eq 1 && test "$status_pass" -eq 1
+        then
+            echo "* Test $testname passed ($mark marks)."
+            passcount=$((passcount+1))
+            summark=$((summark+mark))
+            rm -f "$my_out" "$my_err" "$your_out" "$your_err" "$my_tmp" "$your_tmp"
+            continue
+        fi
+
+        echo "* Test $testname failed."
+
+        # stdout
+        if test "$stdout_pass" -eq 0
+        then
+            echo "" >> "$my_out"
+            if cmp -s "$my_out" "$your_out"
+            then
+                echo "Missing newline at end of stdout"
+
+            else
+                drop_last_line "$my_out"
+
+                echo "" >> "$your_out"
+                if cmp -s "$my_out" "$your_out"
+                then
+                    echo "Extra newline at end of stdout"
+
+                else
+                    drop_last_line "$your_out"
+
+                    if test "$your_out_size" -eq 0 && test "$my_out_size" -ne 0
+                    then
+                        echo "--- No stdout expected, these $my_out_size bytes produced:"
+                        cat "$my_out"
+                        echo
+
+                    elif test "$your_out_size" -ne 0 && test "$my_out_size" -eq 0
+                    then
+                        echo "--- No stdout produced, these $your_out_size bytes expected:"
+                        cat "$your_out"
+                        echo
+
+                    else
+                        echo "--- Incorrect stdout of $my_out_size bytes:"
+                        cat "$my_out"
+                        echo
+                        echo "--- Correct stdout is these $your_out_size bytes:"
+                        cat "$your_out"
+                        echo
+                    fi
+                fi
+            fi
+        fi
+
+        # stderr
+        if test "$stderr_pass" -eq 0
+        then
+            echo "" >> "$my_err"
+            if cmp -s "$my_err" "$your_err"
+            then
+                drop_last_line "$my_err"
+                echo "Missing newline at end of stderr"
+
+            else
+                drop_last_line "$my_err"
+
+                echo "" >> "$your_err"
+                if cmp -s "$my_err" "$your_err"
+                then
+                    drop_last_line "$your_err"
+                    echo "Extra newline at end of stderr"
+
+                else
+                    drop_last_line "$your_err"
+
+                    if test "$your_err_size" -eq 0 && test "$my_err_size" -ne 0
+                    then
+                        echo "--- No stderr expected, these $my_err_size bytes produced:"
+                        cat "$my_err"
+                        echo
+
+                    elif test "$your_err_size" -ne 0 && test "$my_err_size" -eq 0
+                    then
+                        echo "--- No stderr produced, these $your_err_size bytes expected:"
+                        cat "$your_err"
+                        echo
+
+                    else
+                        echo "--- Incorrect stderr of $my_err_size bytes:"
+                        cat "$my_err"
+                        echo
+                        echo "--- Correct stderr is these $your_err_size bytes:"
+                        cat "$your_err"
+                        echo
+                    fi
+                fi
+            fi
+        fi
+
+        # exit
+        if test "$status_pass" -eq 0
+        then
+            echo "Exit status of $my_status incorrect should be $expect_status"
+        fi
+
+        failcount=$((failcount+1))
+
+        rm -f "$my_out" "$my_err" "$your_out" "$your_err" "$my_tmp" "$your_tmp"
+
+    done
+
+    echo "** $passcount tests passed, $failcount tests failed - mark: $summark/$totalmark"
+
+done

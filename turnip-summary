@@ -1,0 +1,26 @@
+#!/bin/dash
+# usage: turnip-summary
+
+if ! test -d .turnip
+then
+    echo "turnip-summary: turnip directory .turnip not found" >&2
+    exit 1
+fi
+
+if test "$#" -ne 0
+then
+    echo "usage: turnip-summary" >&2
+    exit 1
+fi
+
+for assignment in .turnip/*
+do
+    if ! test -d "$assignment"
+    then
+        echo "no assignments"
+    else
+        assignment=$(basename "$assignment")
+        i=$(ls ".turnip/$assignment/submission" 2> /dev/null | wc -l | tr -d ' ')
+        echo "assignment $assignment: submissions from $i students"
+    fi
+done

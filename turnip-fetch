@@ -1,0 +1,72 @@
+#!/bin/dash
+# usage: turnip-fetch <assignment> <zid> [n]
+
+assignment="$1"
+zid="$2"
+n="$3"
+
+if ! test -d .turnip
+then
+    echo "turnip-fetch: turnip directory .turnip not found" >&2
+    exit 1
+fi
+
+if test "$#" -ne 2 && test "$#" -ne 3
+then
+    echo "usage: turnip-fetch <assignment> <zid> [n]" >&2
+    exit 1
+fi
+
+if ! echo "$assignment" | grep -Eq '^[a-z][A-Za-z0-9_]*$'
+then
+    echo "turnip-fetch: invalid assignment: $assignment" >&2
+    exit 1
+fi
+
+if ! echo "$zid" | grep -Eq '^z[0-9]{7}$'
+then
+    echo "turnip-fetch: invalid zid: $zid" >&2
+    exit 1
+fi
+
+if ! test -z "$n" && ! echo "$n" | grep -Eq '^-?[0-9]+$'
+then
+    echo "usage: turnip-fetch <assignment> <zid> [n]" >&2
+    exit 1
+fi
+
+if ! test -d ".turnip/$assignment"
+then
+    echo "turnip-fetch: assignment $assignment not found" >&2
+    exit 1
+fi
+
+dir=".turnip/$assignment/submission/$zid"
+count=$(ls "$dir" 2>/dev/null | wc -l | tr -d ' ')
+
+if test "$count" -eq 0
+then
+    echo "turnip-fetch: no submissions found for $assignment" >&2
+    exit 1
+fi
+
+if test -z "$n" || test "$n" -eq 0
+then
+    cat "$dir/$count/file"
+elif test "$n" -gt 0
+then
+    if test "$n" -lt 0 || test "$n" -gt "$count"
+    then
+        echo "turnip-fetch: submission $n not found for $assignment" >&2
+        exit 1
+    fi
+    cat "$dir/$n/file"
+else
+    i=$((count+n))
+    if test "$i" -lt 0 || test "$i" -gt "$count"
+    then
+        echo "turnip-fetch: submission $n not found for $assignment" >&2
+        exit 1
+    fi
+    cat "$dir/$i/file"
+fi

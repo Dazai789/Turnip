@@ -1,0 +1,55 @@
+#!/bin/dash
+# usage: turnip-add <assignment> <tests>
+
+assignment="$1"
+tests="$2"
+# check parameter
+if test "$#" -ne 2
+then
+    echo "usage: turnip-add <assignment> <tests>" >&2
+    exit 1
+fi
+# check assignment-name
+if ! echo "$assignment" | grep -Eq '^[a-z][A-Za-z0-9_]*$'
+then
+    echo "turnip-add: invalid assignment: $assignment" >&2
+    exit 1
+fi
+# check tests-name
+if ! echo "$tests" | grep -Eq '^[a-zA-Z0-9_./-]+$'
+then
+    echo "turnip-add: invalid tests: $tests" >&2
+    exit 1
+fi
+# create .turnip
+if ! test -d .turnip
+then
+    mkdir .turnip
+    echo "directory .turnip created"
+fi
+# check tests-existent
+if ! test -f "$tests"
+then
+    echo "turnip-add: $tests: No such file or directory" >&2
+    exit 1
+fi
+# check tests-type
+if ! tar -tf "$tests" >/dev/null 2>&1
+then
+    echo "turnip-add: $tests: not a valid tar file" >&2
+    exit 1
+fi
+# check assignment-existent
+if test -d ".turnip/$assignment"
+then
+    echo "turnip-add: assignment $assignment already exists" >&2
+    exit 1
+fi
+
+mkdir ".turnip/$assignment"
+echo "assignment $assignment created"
+
+mkdir ".turnip/$assignment/test"
+mkdir ".turnip/$assignment/submission"
+
+tar -xf "$tests" -C ".turnip/$assignment/test"

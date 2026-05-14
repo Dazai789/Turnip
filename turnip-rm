@@ -1,0 +1,29 @@
+#!/bin/dash
+
+assignment="$1"
+
+if ! test -d .turnip
+then
+    echo "turnip-rm: turnip directory .turnip not found" >&2
+    exit 1
+fi
+
+if test "$#" -ne 1
+then
+    echo "usage: turnip-rm <assignment>" >&2
+    exit 1
+fi
+
+if ! echo "$assignment" | grep -Eq '^[a-z][a-zA-Z0-9_]*$'
+then
+    echo "turnip-rm: invalid assignment: $assignment" >&2
+    exit 1
+fi
+
+if ! test -d ".turnip/$assignment"
+then
+    echo "turnip-rm: assignment $assignment not found" >&2
+    exit 1
+fi
+
+rm -rf ".turnip/$assignment" && echo "assignment $assignment removed"

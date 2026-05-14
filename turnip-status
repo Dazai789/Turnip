@@ -1,0 +1,44 @@
+#!/bin/dash
+# usage: turnip-status <zid>
+
+zid="$1"
+
+if ! test -d .turnip
+then
+    echo "turnip-status: turnip directory .turnip not found" >&2
+    exit 1
+fi
+
+if test "$#" -ne 1
+then
+    echo "usage: turnip-status <zid>" >&2
+    exit 1
+fi
+
+if ! echo "$zid" | grep -Eq '^z[0-9]{7}$'
+then
+    echo "turnip-status: invalid zid: $zid" >&2
+    exit 1
+fi
+
+for assignment in .turnip/*
+do
+    assignment=$(basename "$assignment")
+    dir=".turnip/$assignment/submission/$zid"
+    count=$(ls "$dir" 2>/dev/null | wc -l | tr -d ' ')
+    if test "$count" -eq 0
+    then
+        echo "no submissions for $zid"
+    else
+        echo "* $count submissions for $assignment"
+        for i in "$dir"/*
+        do
+            name=$(cat "$i/name")
+            size=$(cat "$i/size")
+            date=$(cat "$i/date")
+            i=$(basename "$i")
+
+            echo "submission $i: $name $size bytes @ $date"
+        done
+    fi
+done
